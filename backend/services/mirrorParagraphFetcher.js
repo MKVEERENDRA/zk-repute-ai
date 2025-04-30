@@ -1,56 +1,43 @@
-// backend/services/mirrorParagraphFetcher.js
-import axios from 'axios';
+// mirrorScore.js
+// Logic to fetch Mirror/Paragraph data and calculate a fair reputation score
 
-// Fetch Mirror.xyz Articles (using The Graph)
-export async function fetchMirrorArticles(userId) {
-  const query = `{
-    user(id: "${userId}") {
-      publications(first: 10) {
-        nodes {
-          id
-          title
-          createdAt
-          stats {
-            claps
-            comments
-          }
-        }
-      }
-    }
-  }`;
-  const response = await axios.post('https://api.thegraph.com/subgraphs/name/mirrorxyz/mirror', { query });
-  return response.data.data?.user?.publications?.nodes || [];
+const axios = require('axios');
+
+async function fetchMirrorData(addressOrHandle) {
+  // Placeholder fetch from Mirror/Paragraph APIs or Subgraph if available
+  // This example uses dummy structure; in production, integrate the actual APIs
+
+  // Simulated structure
+  const data = await axios.get(`https://api.mirror.xyz/users/${addressOrHandle}`);
+
+  // Mocking a meaningful extraction structure
+  return {
+    posts: data.data.posts || [],
+    totalFollowers: data.data.followers || 0,
+    totalReposts: data.data.reposts || 0,
+    totalComments: data.data.comments || 0,
+    totalLikes: data.data.likes || 0
+  };
 }
 
-// Fetch Paragraph Articles (using The Graph)
-export async function fetchParagraphArticles(userId) {
-  const query = `{
-    user(id: "${userId}") {
-      posts {
-        id
-        title
-        createdAt
-        likes
-        comments
-      }
-    }
-  }`;
-  const response = await axios.post('https://api.paragraph.xyz/subgraphs/name/paragraphxyz/paragraph', { query });
-  return response.data.data?.user?.posts || [];
-}
-
-// Scoring Function
-export function scoreContributions(articles, platform) {
+function calculateMirrorScore(data) {
   let score = 0;
-  articles.forEach(article => {
-    // Base score for each article
-    score += 10;
-    // Platform-specific engagement metrics
-    if (platform === 'mirror') {
-      score += (article.stats?.claps || 0) * 0.5 + (article.stats?.comments || 0) * 0.3;
-    } else if (platform === 'paragraph') {
-      score += (article.likes || 0) * 0.4 + (article.comments || 0) * 0.3;
-    }
-  });
-  return score;
+
+  // Post quality metrics (Assume AI takes care of relevance/sentiment/complexity separately)
+  const postQualityScore = data.posts.length * 4; // Basic base score
+
+  // Engagement
+  const engagementScore = data.totalLikes * 2 + data.totalComments * 3 + data.totalReposts * 4;
+
+  // Follower weight
+  const followerScore = data.totalFollowers * 1.5;
+
+  score = postQualityScore + engagementScore + followerScore;
+
+  return Math.round(score);
 }
+
+module.exports = {
+  fetchMirrorData,
+  calculateMirrorScore
+};

@@ -1,0 +1,22 @@
+const axios = require('axios');
+
+async function fetchHackerNewsData(username) {
+  const { data } = await axios.get(`https://hacker-news.firebaseio.com/v0/user/${username}.json`);
+  return data;
+}
+
+function calculateHNScore(data) {
+  if (!data) return 0;
+
+  const score = (
+    (data.karma || 0) * 0.6 +        // Karma
+    (data.submitted?.length || 0) * 0.4 // # of posts/comments submitted
+  );
+
+  return Math.round(score);
+}
+
+module.exports = {
+  fetchHackerNewsData,
+  calculateHNScore
+};

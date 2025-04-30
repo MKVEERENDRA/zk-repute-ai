@@ -1,22 +1,33 @@
-import express from 'express';
-import { fetchUpiStatement, generateUpiProof } from '../services/upiFetcher.js';
-
+// backend/routes/upi.js
+// Modular UPI score and ZK proof route
+const express = require('express');
 const router = express.Router();
+const { calculateUPIScore } = require('../services/upiScoreCalculator');
+const { generateZKProof } = require('../../circuits/upi/upiScore.circom');
 
-// Endpoint to upload and generate UPI proof
-router.post('/proof', async (req, res) => {
+// POST /api/upi/score
+router.post('/score', async (req, res) => {
   try {
-    const filePath = req.body.filePath; // File path where UPI statement is stored (in real use, this will come as form data)
-    const upiStatement = fetchUpiStatement(filePath);
-    if (!upiStatement) {
-      return res.status(400).json({ error: 'Invalid UPI statement' });
+    const { transactions, balanceHistory, threshold = 50, secret = 12345 } = req.body;
+    if (!transactions || !Array.isArray(transactions)) {
+      return res.status(400).json({ error: 'Transactions array required' });
     }
-    const proof = await generateUpiProof(upiStatement);
-    res.json(proof);
+    // 1. Calculate modular UPI metrics
+    const metrics = calculateUPIScore({ transactions, balanceHistory: balanceHistory || [] });
+
+    // 2. Generate ZK proof for modular metrics (if required)
+    const proofResult = await generateZKProof(metrics, threshold, secret);
+
+    res.json({
+      ...metrics,
+      threshold,
+      proof: proofResult.proof,
+      publicSignals: proofResult.publicSignals
+    });
   } catch (err) {
-    console.error('Error generating UPI proof:', err);
-    res.status(500).json({ error: 'Failed to generate UPI proof' });
+    console.error('UPI Score/Proof Error:', err);
+    res.status(500).json({ error: 'Failed to calculate UPI score or ZK proof' });
   }
 });
 
-export default router;
+module.exports = router;

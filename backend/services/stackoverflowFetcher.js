@@ -1,57 +1,53 @@
-// backend/services/stackoverflowFetcher.js
-import axios from 'axios';
+const axios = require('axios');
 
-// In-memory cache (12h)
-const cache = {};
-const CACHE_TTL = 60 * 60 * 12 * 1000;
+async function fetchSOData(userId) {
+  const res = await axios.get(`https://api.stackexchange.com/2.3/users/${userId}?site=stackoverflow`);
+  const activity = await axios.get(`https://api.stackexchange.com/2.3/users/${userId}/timeline?site=stackoverflow`);
+  
+  const user = res.data.items[0];
+  const timeline = activity.data.items;
 
-// Fetch StackOverflow user's public data
-async function fetchStackOverflowData(userId) {
-  const now = Date.now();
-  if (cache[userId] && now - cache[userId].ts < CACHE_TTL) {
-    return cache[userId].data;
+  let answers = 0, accepted = 0, questions = 0, upvotes = 0, downvotes = 0, edits = 0;
+  const activeDays = new Set();
+  for (const event of timeline) {
+    if (event.timeline_type === 'answer') answers++;
+    if (event.timeline_type === 'accepted') accepted++;
+    if (event.timeline_type === 'question') questions++;
+    if (event.timeline_type === 'vote_aggregate') {
+      upvotes += event.up_vote_count || 0;
+      downvotes += event.down_vote_count || 0;
+    }
+    if (event.timeline_type === 'revision') edits++;
+    activeDays.add(event.creation_date);
   }
-  const url = `https://api.stackexchange.com/2.3/users/${userId}?site=stackoverflow&filter=!*rX3zoy@67KJlF3v`;
-  try {
-    const response = await axios.get(url);
-    const data = response.data.items[0] || {};
-    cache[userId] = { ts: now, data };
-    return data;
-  } catch (err) {
-    console.error('StackOverflow Fetch Error:', err.message);
-    return {};
-  }
-}
 
-function calculateStackOverflowScore(data) {
-  const reputation = data.reputation || 0;
-  const answerCount = data.answer_count || 0;
-  const upvoteCount = data.up_vote_count || 0;
-  // Reputation Score
-  const reputationScore = Math.min(reputation / 5000, 1) * 40;
-  // Answer Quality Score (based on answer count + upvotes)
-  const answerScore = Math.min((answerCount * 2 + upvoteCount) / 50, 1) * 40;
-  // Engagement Score (in terms of recent activity)
-  const recentActivityScore = Math.min(answerCount / 10, 1) * 20;
-  const totalScore = reputationScore + answerScore + recentActivityScore;
   return {
-    score: Math.round(totalScore),
-    breakdown: {
-      reputationScore,
-      answerScore,
-      recentActivityScore
-    },
-    reputation,
-    answerCount,
-    upvoteCount
+    reputation: user.reputation,
+    badges: user.badge_counts,
+    answers,
+    accepted,
+    questions,
+    upvotes,
+    downvotes,
+    edits,
+    activeMonths: activeDays.size / 30 // rough
   };
 }
 
-export async function getStackOverflowReputation(userId) {
-  const data = await fetchStackOverflowData(userId);
-  const score = calculateStackOverflowScore(data);
-  return {
-    userId,
-    ...score
-  };
+function calculateSOScore(data) {
+  let score = 0;
+  score += data.answers * 5;
+  score += data.accepted * 8;
+  score += data.questions * 2;
+  score += data.upvotes * 1;
+  score -= data.downvotes * 2;
+  score += data.edits * 1;
+  score += data.activeMonths * 2;
+  score += data.badges.gold * 10 + data.badges.silver * 5 + data.badges.bronze * 2;
+  return Math.round(score);
 }
+
+module.exports = {
+  fetchSOData,
+  calculateSOScore
+};

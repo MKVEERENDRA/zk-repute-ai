@@ -1,42 +1,37 @@
-// backend/services/twitterFetcher.js
+// services/twitterFetcher.js
+const { TwitterApi } = require('twitter-api-v2');
 
-// Mock data for now (replace with Twitter API in production)
-const mockTwitterData = {
-  username: 'veerenzk',
-  tweetsLast30Days: 42,
-  followers: 1200,
-  following: 200,
-  avgEngagement: 15.5 // likes + RTs + replies per tweet
+// Set up the Twitter client using your API keys (you'll need to get them from the Twitter Developer Portal)
+const twitterClient = new TwitterApi({
+  appKey: 'YOUR_TWITTER_APP_KEY',
+  appSecret: 'YOUR_TWITTER_APP_SECRET',
+  accessToken: 'YOUR_TWITTER_ACCESS_TOKEN',
+  accessSecret: 'YOUR_TWITTER_ACCESS_SECRET',
+});
+
+// Function to fetch Twitter data for a given username
+const getTwitterData = async (username) => {
+  try {
+    // Fetch user data (e.g., tweets, followers, etc.)
+    const user = await twitterClient.v2.userByUsername(username, {
+      'user.fields': ['public_metrics', 'created_at'],
+    });
+
+    // Fetch the user's tweets (you can adjust the tweet fields and limit as needed)
+    const tweets = await twitterClient.v2.userTimeline(user.data.id, {
+      max_results: 10, // Fetch the latest 10 tweets (adjust as needed)
+      'tweet.fields': ['public_metrics', 'created_at'],
+    });
+
+    // Return the combined data (user profile and recent tweets)
+    return {
+      account: user.data,
+      tweets: tweets.data,
+    };
+  } catch (error) {
+    console.error('Error fetching Twitter data:', error);
+    throw new Error('Failed to fetch Twitter data');
+  }
 };
 
-function calculateTwitterScore(data) {
-  const { tweetsLast30Days, followers, following, avgEngagement } = data;
-  const tweetScore = Math.min(tweetsLast30Days / 50, 1) * 30;
-  const followerRatioScore = Math.min(followers / (following + 1), 5) / 5 * 30;
-  const engagementScore = Math.min(avgEngagement / 20, 1) * 40;
-  const totalScore = tweetScore + followerRatioScore + engagementScore;
-  return {
-    score: Math.round(totalScore),
-    details: {
-      tweetScore,
-      followerRatioScore,
-      engagementScore
-    }
-  };
-}
-
-async function fetchTwitterData(handle) {
-  // Placeholder — replace with Twitter API call
-  console.log(`Fetching Twitter data for @${handle}`);
-  return mockTwitterData;
-}
-
-export async function getTwitterReputation(handle) {
-  const data = await fetchTwitterData(handle);
-  const score = calculateTwitterScore(data);
-  return {
-    handle,
-    ...score,
-    raw: data
-  };
-}
+module.exports = { getTwitterData };

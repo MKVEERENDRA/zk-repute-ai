@@ -1,55 +1,51 @@
-// backend/services/poapFetcher.js
-import axios from 'axios';
+const axios = require('axios');
 
-async function fetchPoaps(ethAddress) {
-  const url = `https://api.poap.tech/actions/scan/${ethAddress}`;
-  try {
-    const response = await axios.get(url, {
-      headers: { /* 'X-API-Key': process.env.POAP_API_KEY || '' */ }
-    });
-    return response.data || [];
-  } catch (err) {
-    console.error('POAP Fetch Error:', err.message);
-    return [];
-  }
-}
+const BASE_URL = 'https://api.poap.tech';
 
-function calculatePoapScore(poaps) {
-  const totalPoaps = poaps.length;
-  // Unique events
-  const uniqueEventIds = new Set(poaps.map(p => p.event.id));
-  const uniqueScore = Math.min(uniqueEventIds.size / 10, 1) * 40;
-  // Recent activity (last 6 months)
+// Fetch POAPs and events data for the given address
+async function fetchPOAPData(address) {
+  const headers = { 'X-API-Key': process.env.POAP_API_KEY || '' };
+  const res = await axios.get(`${BASE_URL}/actions/scan/${address}`, { headers });
+  const tokens = res.data || [];
+
+  let uniqueEvents = new Set();
+  let attendedEvents = 0;
+  let highQualityEvents = 0;
+  let recentEvents = 0;
   const now = new Date();
-  const recentPoaps = poaps.filter(p => {
-    const eventDate = new Date(p.event.start_date);
-    const diffMonths = (now - eventDate) / (1000 * 60 * 60 * 24 * 30);
-    return diffMonths <= 6;
-  });
-  const recentScore = Math.min(recentPoaps.length / 5, 1) * 30;
-  // Diversity of events
-  const eventTitles = poaps.map(p => p.event.name.toLowerCase());
-  const isHackathon = eventTitles.filter(e => e.includes('hackathon')).length;
-  const isCommunity = eventTitles.filter(e => e.includes('community')).length;
-  const diversityScore = Math.min((isHackathon + isCommunity) / 5, 1) * 30;
-  const totalScore = uniqueScore + recentScore + diversityScore;
-  return {
-    score: Math.round(totalScore),
-    breakdown: {
-      uniqueScore,
-      recentScore,
-      diversityScore
-    },
-    totalPoaps
-  };
-}
 
-export async function getPoapReputation(address) {
-  const poaps = await fetchPoaps(address);
-  const score = calculatePoapScore(poaps);
+  for (const token of tokens) {
+    uniqueEvents.add(token.event.id);
+    attendedEvents++;
+
+    // Scoring by high quality: community-chosen e.g., if there's a website or image
+    if (token.event.image_url || token.event.site) highQualityEvents++;
+
+    // Recent: events attended in the last 6 months
+    const eventDate = new Date(token.event.start_date);
+    const monthDiff = (now.getFullYear() - eventDate.getFullYear()) * 12 + (now.getMonth() - eventDate.getMonth());
+    if (monthDiff <= 6) recentEvents++;
+  }
+
   return {
     address,
-    ...score,
-    rawPoaps: poaps.slice(0, 5), // preview
+    uniqueEvents: uniqueEvents.size,
+    attendedEvents,
+    highQualityEvents,
+    recentEvents
   };
 }
+
+function calculatePOAPReputationScore(data) {
+  let score = 0;
+  score += data.attendedEvents * 3;
+  score += data.highQualityEvents * 5;
+  score += data.recentEvents * 4;
+  score += data.uniqueEvents * 2;
+  return Math.round(score);
+}
+
+module.exports = {
+  fetchPOAPData,
+  calculatePOAPReputationScore
+};

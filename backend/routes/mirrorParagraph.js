@@ -1,37 +1,35 @@
-// backend/routes/mirrorParagraph.js
-import express from 'express';
-import {
-  fetchMirrorArticles,
-  fetchParagraphArticles,
-  scoreContributions
-} from '../services/mirrorParagraphFetcher.js';
-
+// mirrorScore.route.js
+const express = require('express');
 const router = express.Router();
+const { fetchMirrorData, calculateMirrorScore } = require('../services/mirrorParagraphFetcher');
+const { generateZKProof } = require('../../circuits/mirrorParagraph/mirrorParagraphScore.circom');
 
-// Endpoint to fetch and score Mirror Articles
-router.post('/mirror/score', async (req, res) => {
-  const { userId } = req.body;
+// POST /api/mirror-reputation
+router.post('/mirror-reputation', async (req, res) => {
   try {
-    const articles = await fetchMirrorArticles(userId);
-    const score = scoreContributions(articles, 'mirror');
-    res.json({ score, articles });
-  } catch (error) {
-    console.error('Error fetching Mirror articles:', error);
-    res.status(500).json({ error: 'Failed to fetch Mirror articles' });
+    const { addressOrHandle, threshold = 100, secret = 12345 } = req.body;
+    if (!addressOrHandle) return res.status(400).json({ error: 'Address or handle required' });
+
+    const mirrorData = await fetchMirrorData(addressOrHandle);
+    const score = calculateMirrorScore(mirrorData);
+
+    const proofResult = await generateZKProof({
+      score,
+      threshold,
+      secret
+    });
+
+    return res.json({
+      addressOrHandle,
+      score,
+      threshold,
+      proof: proofResult.proof,
+      publicSignals: proofResult.publicSignals
+    });
+  } catch (err) {
+    console.error('Mirror ZK proof error:', err);
+    return res.status(500).json({ error: 'Mirror ZK proof generation failed' });
   }
 });
 
-// Endpoint to fetch and score Paragraph Articles
-router.post('/paragraph/score', async (req, res) => {
-  const { userId } = req.body;
-  try {
-    const articles = await fetchParagraphArticles(userId);
-    const score = scoreContributions(articles, 'paragraph');
-    res.json({ score, articles });
-  } catch (error) {
-    console.error('Error fetching Paragraph articles:', error);
-    res.status(500).json({ error: 'Failed to fetch Paragraph articles' });
-  }
-});
-
-export default router;
+module.exports = router;

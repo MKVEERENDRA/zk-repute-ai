@@ -1,17 +1,34 @@
-import express from 'express';
-import { getLensReputation } from '../services/lensFetcher.js';
-
+const express = require('express');
 const router = express.Router();
+const { fetchLensData, calculateLensScore } = require('../services/lensFetcher');
+const { generateZKProof } = require('../../circuits/lens/lensScore.circom');
 
-router.get('/:handle', async (req, res) => {
+router.post('/lens-reputation', async (req, res) => {
   try {
-    const handle = req.params.handle;
-    const rep = await getLensReputation(handle);
-    res.json(rep);
+    const { handle, threshold = 100, secret = 12345 } = req.body;
+    if (!handle) return res.status(400).json({ error: 'Lens handle is required' });
+
+    const lensData = await fetchLensData(handle);
+    const score = calculateLensScore(lensData);
+
+    const proofResult = await generateZKProof({
+      score,
+      threshold,
+      secret
+    });
+
+    res.json({
+      handle,
+      score,
+      threshold,
+      proof: proofResult.proof,
+      publicSignals: proofResult.publicSignals
+    });
+
   } catch (err) {
-    console.error('Lens rep error:', err);
-    res.status(500).json({ error: 'Failed to fetch Lens reputation' });
+    console.error('Lens ZK proof error:', err);
+    res.status(500).json({ error: 'Lens ZK proof generation failed' });
   }
 });
 
-export default router;
+module.exports = router;

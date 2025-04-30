@@ -1,42 +1,45 @@
-// backend/services/farcasterFetcher.js
+// services/farcasterFetcher.js
+const axios = require('axios');
 
-const mockFarcasterData = {
-  fid: 12345,
-  username: 'veeren',
-  followers: 450,
-  casts: 90,
-  recasts: 35,
-  likes: 210,
-};
-
-function calculateFarcasterScore(data) {
-  const { casts, followers, recasts, likes } = data;
-  const castScore = Math.min(casts / 100, 1) * 30;
-  const followerScore = Math.min(followers / 1000, 1) * 30;
-  const engagementScore = Math.min((recasts + likes) / 300, 1) * 40;
-  const totalScore = castScore + followerScore + engagementScore;
-  return {
-    score: Math.round(totalScore),
-    details: {
-      castScore,
-      followerScore,
-      engagementScore
-    }
-  };
-}
-
+// Sample dummy fetch logic with Neynar API (AI processing to be added later)
 async function fetchFarcasterData(username) {
-  // Mock for now — replace with Farcaster API call for production
-  console.log(`Fetching Farcaster data for ${username}`);
-  return mockFarcasterData;
-}
+  const apiKey = process.env.NEYNAR_API_KEY;
+  const headers = { 'api_key': apiKey };
 
-export async function getFarcasterReputation(username) {
-  const data = await fetchFarcasterData(username);
-  const score = calculateFarcasterScore(data);
+  const userRes = await axios.get(`https://api.neynar.com/v1/farcaster/user-by-username?username=${username}`, { headers });
+  const fid = userRes.data.user.fid;
+
+  const [profileRes, messagesRes] = await Promise.all([
+    axios.get(`https://api.neynar.com/v1/farcaster/user?fid=${fid}`, { headers }),
+    axios.get(`https://api.neynar.com/v1/farcaster/casts?fid=${fid}`, { headers })
+  ]);
+
   return {
-    username,
-    ...score,
-    raw: data
+    profile: profileRes.data,
+    messages: messagesRes.data.result.casts,
+    fid
   };
 }
+
+function calculateFarcasterScore({ profile, messages }) {
+  let score = 0;
+
+  const followers = profile.user.follower_count || 0;
+  const following = profile.user.following_count || 0;
+  const followerRatio = followers / Math.max(following, 1);
+  score += Math.min(10, followerRatio) * 2;
+
+  const postCount = messages.length;
+  score += Math.min(100, postCount) * 1;
+
+  const totalLikes = messages.reduce((acc, msg) => acc + (msg.reactions.likes || 0), 0);
+  const totalReplies = messages.reduce((acc, msg) => acc + (msg.replies.count || 0), 0);
+  score += totalLikes * 1.5 + totalReplies * 2;
+
+  return Math.round(score);
+}
+
+module.exports = {
+  fetchFarcasterData,
+  calculateFarcasterScore
+};
